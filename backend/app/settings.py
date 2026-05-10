@@ -10,7 +10,7 @@ class Settings(BaseModel):
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""
     app_data_dir: str = "./data"
-    cors_origins: list[str] = ["https://rag-agent-hvqdmtb3x-bharathkadali690-5707s-projects.vercel.app"]
+    cors_origins: list[str] = ["https://*.vercel.app"]
 
     @staticmethod
     def load() -> "Settings":
