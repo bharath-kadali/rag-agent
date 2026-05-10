@@ -10,12 +10,12 @@ class Settings(BaseModel):
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""
     app_data_dir: str = "./data"
-    cors_origins: list[str] = ["https://*.vercel.app"]
+    cors_origins: list[str] = ["http://localhost:5173"]
 
     @staticmethod
     def load() -> "Settings":
         cors = os.getenv("CORS_ORIGINS", "http://localhost:5173").strip()
-        cors_origins = [o.strip() for o in cors.split(",") if o.strip()]
+        cors_origins = [o.strip().rstrip("/") for o in cors.split(",") if o.strip()]
         return Settings(
             groq_api_key=os.getenv("GROQ_API_KEY", ""),
             groq_model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
