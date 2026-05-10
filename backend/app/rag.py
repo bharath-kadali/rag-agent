@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import os
 import re
+import threading
 import uuid
 from typing import Any, Iterable
 
@@ -16,6 +17,25 @@ from qdrant_client.http import models as qm
 
 COLLECTION_NAME = "notebooklm_chunks"
 EMBED_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+_UPSERT_BATCH = 128
+
+_embed_lock = threading.Lock()
+_embedding_model: TextEmbedding | None = None
+
+
+def get_embedding_model() -> TextEmbedding:
+    global _embedding_model
+    if _embedding_model is None:
+        with _embed_lock:
+            if _embedding_model is None:
+                _embedding_model = TextEmbedding(model_name=EMBED_MODEL_NAME)
+    return _embedding_model
+
+
+def warmup_embedding_model() -> None:
+    """Load model once at startup so the first upload does not hit Render request timeouts."""
+    model = get_embedding_model()
+    _ = next(_iter_embeddings(model, ["warmup"]))
 
 
 def _qdrant_client(url: str, api_key: str) -> QdrantClient:
@@ -111,7 +131,7 @@ def index_document(
     raw_bytes: bytes,
 ) -> dict[str, Any]:
     client = _qdrant_client(qdrant_url, qdrant_api_key)
-    embedding_model = TextEmbedding(model_name=EMBED_MODEL_NAME)
+    embedding_model = get_embedding_model()
     vector_size = len(next(_iter_embeddings(embedding_model, ["dimension_probe"])))
     ensure_collection(client, vector_size)
 
@@ -161,7 +181,8 @@ def index_document(
         pid = uuid.uuid5(ns, f"{document_id}:{idx}")
         points.append(qm.PointStruct(id=str(pid), vector=vec, payload=pl))
 
-    client.upsert(collection_name=COLLECTION_NAME, points=points)
+    for i in range(0, len(points), _UPSERT_BATCH):
+        client.upsert(collection_name=COLLECTION_NAME, points=points[i : i + _UPSERT_BATCH])
     return {"indexed_chunks": len(points)}
 
 
@@ -174,7 +195,7 @@ def retrieve(
     k: int = 5,
 ) -> list[dict[str, Any]]:
     client = _qdrant_client(qdrant_url, qdrant_api_key)
-    embedding_model = TextEmbedding(model_name=EMBED_MODEL_NAME)
+    embedding_model = get_embedding_model()
     query_vec = list(next(_iter_embeddings(embedding_model, [query])))
     hits = client.search(
         collection_name=COLLECTION_NAME,

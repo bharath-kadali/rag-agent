@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from typing import Any
 
 from dotenv import load_dotenv
@@ -9,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from openai import BadRequestError
 
-from .rag import index_document, retrieve, answer_with_groq
+from .rag import index_document, retrieve, answer_with_groq, warmup_embedding_model
 from .settings import Settings
 from .storage import MetadataStore
 
@@ -18,7 +19,16 @@ load_dotenv()
 settings = Settings.load()
 store = MetadataStore(settings.app_data_dir)
 
-app = FastAPI(title="NotebookLM RAG (Groq + Qdrant)")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    preload = os.getenv("SKIP_EMBED_WARMUP", "").strip().lower() not in ("1", "true", "yes")
+    if preload:
+        warmup_embedding_model()
+    yield
+
+
+app = FastAPI(title="NotebookLM RAG (Groq + Qdrant)", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -82,14 +92,17 @@ async def upload_document(file: UploadFile = File(...)) -> UploadResponse:
 
     meta = store.create(filename=file.filename, content_type=file.content_type or "application/octet-stream")
 
-    res = index_document(
-        qdrant_url=settings.qdrant_url,
-        qdrant_api_key=settings.qdrant_api_key,
-        document_id=meta.document_id,
-        filename=meta.filename,
-        content_type=meta.content_type,
-        raw_bytes=raw,
-    )
+    try:
+        res = index_document(
+            qdrant_url=settings.qdrant_url,
+            qdrant_api_key=settings.qdrant_api_key,
+            document_id=meta.document_id,
+            filename=meta.filename,
+            content_type=meta.content_type,
+            raw_bytes=raw,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Indexing failed: {e}") from e
 
     return UploadResponse(document_id=meta.document_id, filename=meta.filename, indexed_chunks=int(res["indexed_chunks"]))
 
