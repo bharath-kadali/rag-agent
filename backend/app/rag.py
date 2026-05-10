@@ -13,6 +13,7 @@ from openai import OpenAI
 from pypdf import PdfReader
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
+from qdrant_client.http.exceptions import UnexpectedResponse
 
 
 COLLECTION_NAME = "notebooklm_chunks"
@@ -106,14 +107,31 @@ def parse_csv(data: bytes, *, max_rows: int = 2000) -> list[dict[str, Any]]:
     return rows
 
 
+def _ensure_doc_id_payload_index(client: QdrantClient) -> None:
+    """Qdrant Cloud requires a payload index to filter by doc_id during search."""
+    try:
+        client.create_payload_index(
+            collection_name=COLLECTION_NAME,
+            field_name="doc_id",
+            field_schema=qm.PayloadSchemaType.KEYWORD,
+        )
+    except UnexpectedResponse as e:
+        if e.status_code == 409:
+            return
+        body = (e.content or b"").decode("utf-8", errors="ignore").lower()
+        if e.status_code == 400 and any(w in body for w in ("already", "exist", "duplicate", "indexed")):
+            return
+        raise
+
+
 def ensure_collection(client: QdrantClient, vector_size: int) -> None:
     existing = {c.name for c in client.get_collections().collections}
-    if COLLECTION_NAME in existing:
-        return
-    client.create_collection(
-        collection_name=COLLECTION_NAME,
-        vectors_config=qm.VectorParams(size=vector_size, distance=qm.Distance.COSINE),
-    )
+    if COLLECTION_NAME not in existing:
+        client.create_collection(
+            collection_name=COLLECTION_NAME,
+            vectors_config=qm.VectorParams(size=vector_size, distance=qm.Distance.COSINE),
+        )
+    _ensure_doc_id_payload_index(client)
 
 
 def _iter_embeddings(embedding_model: TextEmbedding, texts: Iterable[str]) -> Iterable[list[float]]:
@@ -195,6 +213,7 @@ def retrieve(
     k: int = 5,
 ) -> list[dict[str, Any]]:
     client = _qdrant_client(qdrant_url, qdrant_api_key)
+    _ensure_doc_id_payload_index(client)
     embedding_model = get_embedding_model()
     query_vec = list(next(_iter_embeddings(embedding_model, [query])))
     hits = client.search(
