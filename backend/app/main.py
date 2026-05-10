@@ -9,6 +9,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from openai import BadRequestError
+from qdrant_client.http.exceptions import ResponseHandlingException
 
 from .rag import index_document, retrieve, answer_with_groq, warmup_embedding_model
 from .settings import Settings
@@ -18,6 +19,13 @@ from .storage import MetadataStore
 load_dotenv()
 settings = Settings.load()
 store = MetadataStore(settings.app_data_dir)
+
+# Render / Fly / etc.: localhost Qdrant is wrong — use Qdrant Cloud URL + API key in env.
+_QDRANT_UNREACHABLE = (
+    "Cannot reach Qdrant (connection refused). On cloud hosting, set QDRANT_URL to your "
+    "Qdrant Cloud HTTPS URL (from cloud.qdrant.io) and QDRANT_API_KEY. "
+    "Never use http://localhost:6333 on the server — that points at the app container, not your database."
+)
 
 
 @asynccontextmanager
@@ -101,6 +109,8 @@ async def upload_document(file: UploadFile = File(...)) -> UploadResponse:
             content_type=meta.content_type,
             raw_bytes=raw,
         )
+    except ResponseHandlingException as e:
+        raise HTTPException(status_code=503, detail=_QDRANT_UNREACHABLE) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Indexing failed: {e}") from e
 
@@ -113,13 +123,16 @@ def chat(req: ChatRequest) -> ChatResponse:
     if not meta:
         raise HTTPException(status_code=404, detail="Unknown document_id")
 
-    contexts = retrieve(
-        qdrant_url=settings.qdrant_url,
-        qdrant_api_key=settings.qdrant_api_key,
-        document_id=req.document_id,
-        query=req.question,
-        k=req.k,
-    )
+    try:
+        contexts = retrieve(
+            qdrant_url=settings.qdrant_url,
+            qdrant_api_key=settings.qdrant_api_key,
+            document_id=req.document_id,
+            query=req.question,
+            k=req.k,
+        )
+    except ResponseHandlingException as e:
+        raise HTTPException(status_code=503, detail=_QDRANT_UNREACHABLE) from e
     if not settings.groq_api_key:
         raise HTTPException(
             status_code=500,

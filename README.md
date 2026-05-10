@@ -54,6 +54,16 @@ npm run dev
 
 Open the UI at `http://localhost:5173`.
 
+## Deploying backend (e.g. Render) + Qdrant
+
+The API must reach a **real** Qdrant instance over the network.
+
+- **Do not** set `QDRANT_URL=http://localhost:6333` on Render. On the server, `localhost` is the Render container itself — nothing is listening → `Connection refused` (errno 111).
+- Create a cluster on [Qdrant Cloud](https://cloud.qdrant.io), then on Render set:
+  - **`QDRANT_URL`** = cluster URL (usually `https://…cloud.qdrant.io`, from the dashboard).
+  - **`QDRANT_API_KEY`** = API key from the same dashboard.
+- Redeploy the backend after changing env vars.
+
 ## Notes
 
 - **Chunking**: character-based chunking with overlap (see `backend/app/rag.py::chunk_text`).
