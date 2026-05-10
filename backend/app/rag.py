@@ -18,6 +18,13 @@ COLLECTION_NAME = "notebooklm_chunks"
 EMBED_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 
+def _qdrant_client(url: str, api_key: str) -> QdrantClient:
+    """Local Qdrant: omit api_key. Qdrant Cloud: set QDRANT_API_KEY."""
+    if api_key.strip():
+        return QdrantClient(url=url, api_key=api_key.strip())
+    return QdrantClient(url=url)
+
+
 def _clean_text(s: str) -> str:
     s = s.replace("\x00", " ")
     s = re.sub(r"[ \t]+", " ", s)
@@ -97,12 +104,13 @@ def _iter_embeddings(embedding_model: TextEmbedding, texts: Iterable[str]) -> It
 def index_document(
     *,
     qdrant_url: str,
+    qdrant_api_key: str = "",
     document_id: str,
     filename: str,
     content_type: str,
     raw_bytes: bytes,
 ) -> dict[str, Any]:
-    client = QdrantClient(url=qdrant_url)
+    client = _qdrant_client(qdrant_url, qdrant_api_key)
     embedding_model = TextEmbedding(model_name=EMBED_MODEL_NAME)
     vector_size = len(next(_iter_embeddings(embedding_model, ["dimension_probe"])))
     ensure_collection(client, vector_size)
@@ -160,11 +168,12 @@ def index_document(
 def retrieve(
     *,
     qdrant_url: str,
+    qdrant_api_key: str = "",
     document_id: str,
     query: str,
     k: int = 5,
 ) -> list[dict[str, Any]]:
-    client = QdrantClient(url=qdrant_url)
+    client = _qdrant_client(qdrant_url, qdrant_api_key)
     embedding_model = TextEmbedding(model_name=EMBED_MODEL_NAME)
     query_vec = list(next(_iter_embeddings(embedding_model, [query])))
     hits = client.search(

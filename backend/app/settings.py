@@ -8,6 +8,7 @@ class Settings(BaseModel):
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
     qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: str = ""
     app_data_dir: str = "./data"
     cors_origins: list[str] = ["http://localhost:5173"]
 
@@ -19,6 +20,7 @@ class Settings(BaseModel):
             groq_api_key=os.getenv("GROQ_API_KEY", ""),
             groq_model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
             qdrant_url=os.getenv("QDRANT_URL", "http://localhost:6333"),
+            qdrant_api_key=os.getenv("QDRANT_API_KEY", ""),
             app_data_dir=os.getenv("APP_DATA_DIR", "./data"),
             cors_origins=cors_origins or ["http://localhost:5173"],
         )

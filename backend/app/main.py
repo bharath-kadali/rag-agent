@@ -84,6 +84,7 @@ async def upload_document(file: UploadFile = File(...)) -> UploadResponse:
 
     res = index_document(
         qdrant_url=settings.qdrant_url,
+        qdrant_api_key=settings.qdrant_api_key,
         document_id=meta.document_id,
         filename=meta.filename,
         content_type=meta.content_type,
@@ -99,7 +100,13 @@ def chat(req: ChatRequest) -> ChatResponse:
     if not meta:
         raise HTTPException(status_code=404, detail="Unknown document_id")
 
-    contexts = retrieve(qdrant_url=settings.qdrant_url, document_id=req.document_id, query=req.question, k=req.k)
+    contexts = retrieve(
+        qdrant_url=settings.qdrant_url,
+        qdrant_api_key=settings.qdrant_api_key,
+        document_id=req.document_id,
+        query=req.question,
+        k=req.k,
+    )
     if not settings.groq_api_key:
         raise HTTPException(
             status_code=500,

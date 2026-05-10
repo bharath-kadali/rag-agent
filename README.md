@@ -33,6 +33,7 @@ Edit `backend/.env` and set:
 
 - `GROQ_API_KEY=...`
 - `GROQ_MODEL=llama-3.3-70b-versatile` (optional; this is the default)
+- **Qdrant Cloud**: `QDRANT_URL` = your cluster URL (e.g. `https://xxxx.cloud.qdrant.io`), and `QDRANT_API_KEY` = key from the Qdrant Cloud console. Leave `QDRANT_API_KEY` empty when using local Docker Qdrant.
 
 Run:
 
